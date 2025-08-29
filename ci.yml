@@ -1,0 +1,213 @@
+# ===========================================
+# TEMPLATE 1: Basic Node.js/Express API
+# ===========================================
+name: Node.js API CI/CD
+on:
+  push:
+    branches: [ main ]
+env:
+  NODE_VERSION: '18'
+  APP_NAME: my-api
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint # If you have linting
+      - run: npm test
+      - run: npm run build # If you have a build step
+      
+      # Build artifacts (customize based on your structure)
+      - run: |
+          mkdir -p dist
+          cp -r src dist/ # Copy source files
+          cp package*.json dist/
+          # Add any other files your deployment needs
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-build
+          path: dist/
+
+# ===========================================
+# TEMPLATE 2: React Frontend + Node.js Backend
+# ===========================================
+name: Full Stack CI/CD
+on:
+  push:
+    branches: [ main ]
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json # Different path!
+      - run: |
+          cd frontend
+          npm ci
+          npm run test -- --coverage --watchAll=false
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json # Different path!
+      - run: |
+          cd backend
+          npm ci
+          npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: backend/
+
+# ===========================================
+# TEMPLATE 3: Static Site (HTML/CSS/JS only)
+# ===========================================
+name: Static Site CI/CD
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # No Node.js setup needed for pure static sites
+      - name: Validate HTML
+        run: |
+          # Install HTML validator
+          sudo apt-get update
+          sudo apt-get install -y tidy
+          find . -name "*.html" -exec tidy -q -e {} \;
+          
+      - name: Minify CSS and JS (optional)
+        run: |
+          # You might use tools like:
+          # npx clean-css-cli -o style.min.css style.css
+          # npx uglify-js script.js -o script.min.js
+          echo "Minification step here"
+          
+      - name: Prepare for deployment
+        run: |
+          mkdir -p dist
+          cp -r *.html css/ js/ images/ dist/
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-site
+          path: dist/
+
+# ===========================================
+# TEMPLATE 4: Express + Database (MongoDB/PostgreSQL)
+# ===========================================
+name: Express API with DB CI/CD
+on:
+  push:
+    branches: [ main ]
+env:
+  NODE_VERSION: '18'
+  
+jobs:
+  test-with-database:
+    runs-on: ubuntu-latest
+    
+    # Add database service
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - run: npm ci
+      
+      # Database setup
+      - name: Setup test database
+        run: |
+          npm run db:migrate # If you have migrations
+          npm run db:seed # If you have seed data
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          
+      - name: Run tests with database
+        run: npm test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          NODE_ENV: test
+
+# ===========================================
+# TEMPLATE 5: TypeScript Project
+# ===========================================
+name: TypeScript CI/CD
+on:
+  push:
+    branches: [ main ]
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - run: npm ci
+      
+      # TypeScript specific steps
+      - name: Type checking
+        run: npx tsc --noEmit # Check types without building
+        
+      - name: Run tests
+        run: npm test
+        
+      - name: Build TypeScript
+        run: npm run build # This should compile TS to JS
+        
+      - name: Upload compiled build
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-build
+          path: dist/ # or build/ depending on your setup
