@@ -1,0 +1,303 @@
+Real-Time Chat App: Complete Technology Stack Example
+Let's build a simple real-time chat application that demonstrates all these technologies working together.
+1. The Application (Node.js + WebSockets)
+server.js
+javascriptconst express = require('express');
+const WebSocket = require('ws');
+const app = express();
+const port = 3000;
+
+app.use(express.static('public'));
+
+const server = app.listen(port, () => {
+  console.log(`Chat server running on port ${port}`);
+});
+
+// WebSocket server for real-time messaging
+const wss = new WebSocket.Server({ server });
+
+const clients = new Set();
+
+wss.on('connection', (ws) => {
+  clients.add(ws);
+  console.log('New client connected');
+
+  ws.on('message', (message) => {
+    const data = JSON.parse(message);
+    // Broadcast message to all connected clients
+    clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          username: data.username,
+          message: data.message,
+          timestamp: new Date().toISOString()
+        }));
+      }
+    });
+  });
+
+  ws.on('close', () => {
+    clients.delete(ws);
+    console.log('Client disconnected');
+  });
+});
+2. Unit Testing with Jest
+tests/server.test.js
+javascriptconst WebSocket = require('ws');
+const { createServer } = require('http');
+const express = require('express');
+
+describe('Chat Server', () => {
+  let server;
+  let wss;
+
+  beforeAll((done) => {
+    const app = express();
+    server = createServer(app);
+    wss = new WebSocket.Server({ server });
+    server.listen(0, done);
+  });
+
+  afterAll(() => {
+    wss.close();
+    server.close();
+  });
+
+  test('should connect client and receive messages', (done) => {
+    const ws = new WebSocket(`ws://localhost:${server.address().port}`);
+    
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        username: 'testuser',
+        message: 'Hello World'
+      }));
+    });
+
+    ws.on('message', (data) => {
+      const message = JSON.parse(data);
+      expect(message.username).toBe('testuser');
+      expect(message.message).toBe('Hello World');
+      expect(message.timestamp).toBeDefined();
+      ws.close();
+      done();
+    });
+  });
+});
+package.json
+json{
+  "name": "chat-app",
+  "scripts": {
+    "test": "jest",
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "ws": "^8.0.0"
+  }
+}
+3. Docker Containerization
+Dockerfile
+dockerfile# Use official Node.js runtime
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Run the application
+CMD ["npm", "start"]
+docker-compose.yml
+yamlversion: '3.8'
+services:
+  chat-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+  
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+4. Kubernetes Deployment
+k8s-deployment.yaml
+yamlapiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chat-app
+  template:
+    metadata:
+      labels:
+        app: chat-app
+    spec:
+      containers:
+      - name: chat-app
+        image: your-registry/chat-app:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-service
+spec:
+  selector:
+    app: chat-app
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: LoadBalancer
+5. CI/CD Pipeline (GitHub Actions)
+.github/workflows/deploy.yml
+yamlname: Deploy Chat App
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Run tests
+      run: npm test
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t chat-app:${{ github.sha }} .
+        docker tag chat-app:${{ github.sha }} your-registry/chat-app:latest
+    
+    - name: Push to registry
+      run: |
+        docker push your-registry/chat-app:latest
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/chat-app chat-app=your-registry/chat-app:${{ github.sha }}
+        kubectl rollout status deployment/chat-app
+6. AWS CDK Constructs for Infrastructure
+infrastructure/chat-stack.ts
+typescriptimport * as cdk from 'aws-cdk-lib';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+
+export class ChatAppStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string) {
+    super(scope, id);
+
+    // Create VPC
+    const vpc = new ec2.Vpc(this, 'ChatVPC', {
+      maxAzs: 2
+    });
+
+    // Create ECS Cluster
+    const cluster = new ecs.Cluster(this, 'ChatCluster', {
+      vpc: vpc
+    });
+
+    // Create Fargate Service
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'ChatTask');
+    
+    const container = taskDefinition.addContainer('ChatContainer', {
+      image: ecs.ContainerImage.fromRegistry('your-registry/chat-app:latest'),
+      memoryLimitMiB: 512,
+      cpu: 256,
+      portMappings: [{
+        containerPort: 3000,
+        protocol: ecs.Protocol.TCP
+      }]
+    });
+
+    const service = new ecs.FargateService(this, 'ChatService', {
+      cluster,
+      taskDefinition,
+      desiredCount: 3
+    });
+
+    // Create Load Balancer
+    const lb = new elbv2.ApplicationLoadBalancer(this, 'ChatLB', {
+      vpc,
+      internetFacing: true
+    });
+
+    const listener = lb.addListener('Listener', {
+      port: 80
+    });
+
+    listener.addTargets('ChatTargets', {
+      port: 3000,
+      targets: [service]
+    });
+  }
+}
+How It All Works Together
+
+Development: You write code with WebSocket functionality for real-time chat
+Testing: Jest runs unit tests to ensure your WebSocket handling works correctly
+Containerization: Docker packages your app with all dependencies into a container
+CI/CD Pipeline:
+
+When you push code to GitHub, tests run automatically
+If tests pass, Docker builds a new image
+The image gets pushed to a container registry
+Kubernetes automatically deploys the new version
+
+
+Orchestration: Kubernetes manages multiple instances of your chat app, handling load balancing and scaling
+Infrastructure: AWS CDK constructs provision and manage the cloud infrastructure (load balancers, container clusters, networking)
+
+Real-World Workflow
+Developer commits code → 
+GitHub triggers CI/CD → 
+Jest tests run → 
+Docker image builds → 
+Image pushed to registry → 
+Kubernetes pulls new image → 
+Rolling deployment starts → 
+Load balancer routes traffic → 
+Users get real-time chat via WebSockets
+This example shows how modern applications use all these technologies together to create scalable, reliable, and maintainable software systems.
